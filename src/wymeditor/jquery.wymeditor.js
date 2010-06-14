@@ -1141,10 +1141,14 @@ WYMeditor.editor.prototype.status = function(sMessage) {
  * @description Updates the element and textarea values
  */
 WYMeditor.editor.prototype.update = function() {
-
-  var html = this.xhtml();
-  jQuery(this._element).val(html);
-  jQuery(this._box).find(this._options.htmlValSelector).not('.hasfocus').val(html); //#147
+    var html;
+    
+    // Dirty fix to remove stray line breaks (#189)
+    jQuery(this._doc.body).children(WYMeditor.BR).remove();
+    
+    html = this.xhtml();
+    jQuery(this._element).val(html);
+    jQuery(this._box).find(this._options.htmlValSelector).not('.hasfocus').val(html); //#147
 };
 
 /* @name dialog
@@ -1214,32 +1218,48 @@ WYMeditor.editor.prototype.uniqueStamp = function() {
 	return("wym-" + now.getTime());
 };
 
-WYMeditor.editor.prototype.paste = function(sData) {
+/* @name paste
+ * @description         Paste text into the editor below the carret,
+ *                      used for "Paste from Word".
+ * @param String str    String to insert, two or more newlines separates 
+ *                      paragraphs. May contain inline HTML.
+ */
+WYMeditor.editor.prototype.paste = function(str) {
+    var container = this.selected(),
+        html = '',
+        paragraphs,
+        focusNode;
 
-  var sTmp;
-  var container = this.selected();
-	
-  //split the data, using double newlines as the separator
-  var aP = sData.split(this._newLine + this._newLine);
-  var rExp = new RegExp(this._newLine, "g");
+    // Split string into paragraphs by two or more newlines
+    paragraphs = str.split(new RegExp(this._newLine + '{2,}', 'g'));
 
-  //add a P for each item
-  if(container && container.tagName.toLowerCase() != WYMeditor.BODY) {
-    for(x = aP.length - 1; x >= 0; x--) {
-        sTmp = aP[x];
-        //simple newlines are replaced by a break
-        sTmp = sTmp.replace(rExp, "<br />");
-        jQuery(container).after("<p>" + sTmp + "</p>");
+    // Build html
+    for (var i=0, l=paragraphs.length; i < l; i++) {
+        html += '<p>' + 
+            ( paragraphs[i].split(this._newLine).join('<br />') ) + 
+            '</p>';
     }
-  } else {
-    for(x = 0; x < aP.length; x++) {
-        sTmp = aP[x];
-        //simple newlines are replaced by a break
-        sTmp = sTmp.replace(rExp, "<br />");
-        jQuery(this._doc.body).append("<p>" + sTmp + "</p>");
+
+    // Insert where appropriate
+    if (container && container.tagName.toLowerCase() != WYMeditor.BODY) {
+        // No .last() pre jQuery 1.4
+        //focusNode = jQuery(html).insertAfter(container).last()[0];
+        paragraphs = jQuery(html, this._doc).insertAfter(container);
+        focusNode = paragraphs[paragraphs.length - 1];
+    } else {
+        paragraphs = jQuery(html, this._doc).appendTo(this._doc.body);
+        focusNode = paragraphs[paragraphs.length - 1];
     }
-  
-  }
+    
+    // Do some minor cleanup (#131)
+    if (jQuery(container).text() == '') {
+        jQuery(container).remove(); 
+    }
+    // And remove br (if editor was empty)
+    jQuery('body > br', this._doc).remove();
+    
+    // Restore focus
+    this.setFocusToNode(focusNode);
 };
 
 WYMeditor.editor.prototype.insert = function(html) {
